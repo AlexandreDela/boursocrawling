@@ -1,4 +1,4 @@
 matplotlib
 requests
 bs4
-tqdm
+tqdm>=4.57.0

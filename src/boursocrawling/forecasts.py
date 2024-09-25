@@ -3,7 +3,10 @@ import bs4
 from dataclasses import dataclass
 from typing import Union, Literal
 from tqdm import tqdm
+from time import sleep
 
+CHECK_IN_THRESHOLD = 30 # Arbitrary number to avoid duplicates / Dysfunctional, always true
+RETRY_ATTEMPTS = 4
 
 @dataclass
 class Entry:
@@ -34,7 +37,8 @@ class ForecastsBourso:
         self.set_gathered_stocks = set()
         prefix_url = "https://www.boursorama.com/bourse/actions/consensus/recommandations-paris/"
         postfix_url = "?national_market_filter%5Bmarket%5D=SRD&national_market_filter%5Bsector%5D=&national_market_filter%5Banalysts%5D=1&national_market_filter%5Bperiod%5D=2024&national_market_filter%5Bfilter%5D=&sortColumn=consPotential&orderAsc=1"
-
+        #             https://www.boursorama.com/bourse/actions/consensus/recommandations-paris/
+        #              ?national_market_filter%5Bmarket%5D=SRD&national_market_filter%5Bsector%5D=&national_market_filter%5Banalysts%5D=1&national_market_filter%5Bperiod%5D=2024&national_market_filter%5Bfilter%5D=&sortColumn=consPotential&orderAsc=0
         N_max = 20
         list_urls = [prefix_url+postfix_url] + [prefix_url+f"page-{k}"+postfix_url for k in range(1, N_max+1) if k != 1]
         res_end = None
@@ -53,19 +57,20 @@ class ForecastsBourso:
             soup_2 = soup_res.find("table", {"class": "c-table c-table--generic c-table--generic c-shadow-overflow__table-fixed-column"}).find("tbody")
             check_in = 0
             for soup_i in soup_2.find_all("tr", {"class": "c-table__row"}):
-                res_end = self._parse_entry(soup_i, check_in=(check_in>4))
+                res_end = self._parse_entry(soup_i, check_in=(check_in>CHECK_IN_THRESHOLD))
                 if res_end == "End reached":
-                    break
+                    self.list_entry.pop()
+                    continue
                 check_in += 1
 
 
     @property
     def forward_potential(self):
-        return reversed(self.list_entry)
+        return list(reversed(self.list_entry)).copy()
 
     @property
     def backward_potential(self):
-        return self.list_entry
+        return self.list_entry.copy()
 
     def _parse_entry(self, soup_i, check_in) -> Union[None, Literal["End reached"]]:
         name = soup_i.find("a", {"class": "c-link c-link--animated"}).contents[0]
@@ -85,7 +90,6 @@ class ForecastsBourso:
             content = content.strip()
             if "c-table__cell--negative" in data_i["class"]:
                 if content not in ["-", "\n-"]:
-                    #print(content)
                     content = "-" + content
             L.append(content)
         L = L[2:]
